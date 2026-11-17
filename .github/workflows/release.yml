@@ -47,7 +47,7 @@ jobs:
             name="${name}.exe"
           fi
           go build -trimpath -o "dist/${name}" .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dvm-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/
