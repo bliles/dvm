@@ -50,6 +50,7 @@ type sdkAsset struct {
 
 type sdkArchive struct {
 	Version string
+	RID     string
 	Name    string
 	URL     string
 	Hash    string
@@ -133,7 +134,7 @@ func findSDKArchive(ctx context.Context, client *http.Client, channels []release
 		if err != nil || len(hash) != 64 {
 			return sdkArchive{}, fmt.Errorf("Microsoft's SDK metadata has an invalid SHA-512 hash for %s", asset.Name)
 		}
-		return sdkArchive{Version: selected.Version, Name: asset.Name, URL: asset.URL, Hash: asset.Hash}, nil
+		return sdkArchive{Version: selected.Version, RID: asset.RID, Name: asset.Name, URL: asset.URL, Hash: asset.Hash}, nil
 	}
 	return sdkArchive{}, fmt.Errorf("Microsoft's .NET %s metadata has no SDK archive for %s", channelVersion, rid)
 }

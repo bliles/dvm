@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"archive/zip"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha512"
@@ -74,11 +75,17 @@ func downloadAndInstall(ctx context.Context, client *http.Client, archive sdkArc
 	if err != nil {
 		return fmt.Errorf("extract SDK archive: %w", err)
 	}
+	if err := markSDKInstallPending(installDir, archive.Version); err != nil {
+		return fmt.Errorf("record pending SDK installation: %w", err)
+	}
 	if err := mergeStaging(stagingDir, installDir); err != nil {
 		return fmt.Errorf("install extracted SDK files: %w", err)
 	}
 	if err := markSDKInstallComplete(installDir, archive); err != nil {
 		return fmt.Errorf("record installed SDK %s: %w", archive.Version, err)
+	}
+	if err := os.Remove(sdkPendingPath(installDir, archive.Version)); err != nil {
+		return fmt.Errorf("clear pending SDK installation: %w", err)
 	}
 	return nil
 }
@@ -270,29 +277,46 @@ func mergeStaging(stagingDir, installDir string) error {
 			return err
 		}
 
-		input, err := os.Open(source)
-		if err != nil {
-			return err
+		if relative == "dotnet" || relative == "dotnet.exe" {
+			same, err := filesEqual(source, target)
+			if err != nil {
+				return fmt.Errorf("compare .NET host: %w", err)
+			}
+			if same {
+				return nil
+			}
 		}
-		output, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode().Perm())
-		if err != nil {
-			input.Close()
-			return err
+		if err := os.Rename(source, target); err != nil {
+			return fmt.Errorf("replace %s: %w (close applications using this .NET installation and retry)", target, err)
 		}
-		_, copyErr := io.Copy(output, input)
-		inputCloseErr := input.Close()
-		outputCloseErr := output.Close()
-		if copyErr != nil {
-			return copyErr
-		}
-		if inputCloseErr != nil {
-			return inputCloseErr
-		}
-		if outputCloseErr != nil {
-			return outputCloseErr
-		}
-		return os.Chmod(target, info.Mode().Perm())
+		return nil
 	})
+}
+
+func filesEqual(source, target string) (bool, error) {
+	targetInfo, err := os.Stat(target)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	sourceInfo, err := os.Stat(source)
+	if err != nil {
+		return false, err
+	}
+	if sourceInfo.Size() != targetInfo.Size() || sourceInfo.Mode().Perm() != targetInfo.Mode().Perm() {
+		return false, nil
+	}
+	a, err := os.ReadFile(source)
+	if err != nil {
+		return false, err
+	}
+	b, err := os.ReadFile(target)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(a, b), nil
 }
 
 func ensureInstallDirectory(base, relative string) error {
@@ -324,9 +348,12 @@ func ensureInstallDirectory(base, relative string) error {
 }
 
 func sdkInstallComplete(installDir string, archive sdkArchive) (bool, error) {
-	version, ok := parseVersion(archive.Version)
-	if !ok || version.major < 1 {
+	if !validSDKVersion(archive.Version) {
 		return false, fmt.Errorf("invalid SDK version %q", archive.Version)
+	}
+	sdkRootExists, err := managedDirectoryExists(installDir, filepath.Join(installDir, "sdk"))
+	if err != nil || !sdkRootExists {
+		return false, err
 	}
 	versionDir := filepath.Join(installDir, "sdk", archive.Version)
 	versionInfo, err := os.Lstat(versionDir)
@@ -340,10 +367,18 @@ func sdkInstallComplete(installDir string, archive sdkArchive) (bool, error) {
 		return false, nil
 	}
 
+	_, err = os.Lstat(sdkPendingPath(installDir, archive.Version))
+	if err == nil {
+		return false, nil
+	}
+	if !os.IsNotExist(err) {
+		return false, err
+	}
+
 	marker := filepath.Join(installDir, ".dvm", "installed", archive.Version+".sha512")
 	markerInfo, err := os.Lstat(marker)
 	if os.IsNotExist(err) {
-		return false, nil
+		return existingSDKMatches(versionDir, archive.Version, archive.RID)
 	}
 	if err != nil {
 		return false, err
@@ -358,9 +393,54 @@ func sdkInstallComplete(installDir string, archive sdkArchive) (bool, error) {
 	return strings.EqualFold(strings.TrimSpace(string(contents)), archive.Hash), nil
 }
 
+func existingSDKMatches(versionDir, version, rid string) (bool, error) {
+	for _, name := range []string{"dotnet.dll", ".version"} {
+		info, err := os.Lstat(filepath.Join(versionDir, name))
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if !info.Mode().IsRegular() {
+			return false, nil
+		}
+	}
+	contents, err := os.ReadFile(filepath.Join(versionDir, ".version"))
+	if err != nil {
+		return false, err
+	}
+	lines := strings.Split(string(contents), "\n")
+	return rid != "" && len(lines) >= 3 && strings.TrimSpace(lines[1]) == version && strings.TrimSpace(lines[2]) == rid, nil
+}
+
+func validSDKVersion(value string) bool {
+	version, ok := parseVersion(value)
+	return ok && version.major > 0 && !strings.ContainsAny(value, `/\:`)
+}
+
+func sdkPendingPath(installDir, version string) string {
+	return filepath.Join(installDir, ".dvm", "installed", version+".pending")
+}
+
+func markSDKInstallPending(installDir, version string) error {
+	if !validSDKVersion(version) {
+		return fmt.Errorf("invalid SDK version %q", version)
+	}
+	if err := ensureInstallDirectory(installDir, filepath.Join(".dvm", "installed")); err != nil {
+		return err
+	}
+	pending := sdkPendingPath(installDir, version)
+	if info, err := os.Lstat(pending); err == nil && !info.Mode().IsRegular() {
+		return fmt.Errorf("refusing to overwrite non-regular install state %s", pending)
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return os.WriteFile(pending, nil, 0o600)
+}
+
 func markSDKInstallComplete(installDir string, archive sdkArchive) error {
-	version, ok := parseVersion(archive.Version)
-	if !ok || version.major < 1 {
+	if !validSDKVersion(archive.Version) {
 		return fmt.Errorf("invalid SDK version %q", archive.Version)
 	}
 	hash, err := hex.DecodeString(archive.Hash)
