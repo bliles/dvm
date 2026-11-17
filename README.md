@@ -58,6 +58,21 @@ to locate and run SDKs. dvm does not change shell configuration.
 dvm downloads SDK archives directly from the URLs in Microsoft's release
 metadata. It does not invoke `dotnet-install` or require Bash or PowerShell.
 
+## Releases
+
+Pull requests run Go tests and vet on Linux, macOS, and Windows, and
+cross-compile all supported platforms. Pushing a version tag such as
+`v1.0.0` runs tests, builds binaries for Linux, macOS, and Windows on x64 and
+ARM64, and publishes them with a `SHA256SUMS` file as a GitHub release. Tags
+containing a hyphen, such as `v1.0.0-rc.1`, are published as prereleases.
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The release workflow needs permission to write repository contents.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

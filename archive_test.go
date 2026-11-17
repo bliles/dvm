@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -105,11 +106,19 @@ func TestExtractTarGz(t *testing.T) {
 	if err := extractTarGz(archivePath, destination); err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Stat(filepath.Join(destination, "dotnet"))
+	extractedPath := filepath.Join(destination, "dotnet")
+	actual, err := os.ReadFile(extractedPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm()&0o111 == 0 {
+	if !bytes.Equal(actual, content) {
+		t.Errorf("extracted content = %q, want %q", actual, content)
+	}
+	info, err := os.Stat(extractedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0 {
 		t.Errorf("extracted dotnet host is not executable: mode %v", info.Mode().Perm())
 	}
 }
