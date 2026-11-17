@@ -248,12 +248,15 @@ func pruneInstallMarkers(dir string, major int) error {
 		return fmt.Errorf("read install state directory %s: %w", stateDir, err)
 	}
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sha512") {
+		if entry.IsDir() {
 			continue
 		}
-		versionName := strings.TrimSuffix(entry.Name(), ".sha512")
+		versionName, ok := installStateVersion(entry.Name())
+		if !ok {
+			continue
+		}
 		version, ok := parseVersion(versionName)
-		if !ok || version.major != major || entry.Name() == keep {
+		if !ok || version.major != major || versionName+".sha512" == keep {
 			continue
 		}
 		if err := os.Remove(filepath.Join(stateDir, entry.Name())); err != nil {
@@ -261,6 +264,15 @@ func pruneInstallMarkers(dir string, major int) error {
 		}
 	}
 	return nil
+}
+
+func installStateVersion(name string) (string, bool) {
+	for _, suffix := range []string{".sha512", ".pending"} {
+		if version, ok := strings.CutSuffix(name, suffix); ok {
+			return version, true
+		}
+	}
+	return "", false
 }
 
 func managedDirectoryExists(base, target string) (bool, error) {

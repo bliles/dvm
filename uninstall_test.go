@@ -61,6 +61,9 @@ func TestUninstallExactSDKPreservesSharedComponents(t *testing.T) {
 	}
 	writeMarker(t, dir, "10.0.100")
 	writeMarker(t, dir, "10.0.200")
+	if err := markSDKInstallPending(dir, "10.0.100"); err != nil {
+		t.Fatal(err)
+	}
 
 	count, err := uninstallVersion(dir, "10.0.100")
 	if err != nil {
@@ -69,7 +72,7 @@ func TestUninstallExactSDKPreservesSharedComponents(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("removed %d directories, want 1", count)
 	}
-	for _, path := range []string{"sdk/10.0.100", ".dvm/installed/10.0.100.sha512"} {
+	for _, path := range []string{"sdk/10.0.100", ".dvm/installed/10.0.100.sha512", ".dvm/installed/10.0.100.pending"} {
 		if _, err := os.Stat(filepath.Join(dir, path)); !os.IsNotExist(err) {
 			t.Errorf("%s was not removed: %v", path, err)
 		}

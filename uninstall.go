@@ -79,10 +79,13 @@ func uninstallVersion(dir, selector string) (int, error) {
 			return 0, fmt.Errorf("read install state directory %s: %w", stateDir, err)
 		}
 		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sha512") {
+			if entry.IsDir() {
 				continue
 			}
-			name := strings.TrimSuffix(entry.Name(), ".sha512")
+			name, ok := installStateVersion(entry.Name())
+			if !ok {
+				continue
+			}
 			version, ok := parseVersion(name)
 			if ok && ((exact && name == selector) || (!exact && version.major == major)) {
 				markers = append(markers, filepath.Join(stateDir, entry.Name()))

@@ -38,7 +38,6 @@ func installMajors(ctx context.Context, dir string, majors []int, preview bool, 
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(output, "Installing %s .NET %d SDK (%s) in %s...\n", quality, major, archive.Version, dir)
 		alreadyInstalled, err := sdkInstallComplete(dir, archive)
 		if err != nil {
 			return fmt.Errorf("inspect installed SDK %s: %w", archive.Version, err)
@@ -46,6 +45,7 @@ func installMajors(ctx context.Context, dir string, majors []int, preview bool, 
 		if alreadyInstalled {
 			fmt.Fprintf(output, ".NET SDK %s is already installed; skipping download.\n", archive.Version)
 		} else {
+			fmt.Fprintf(output, "Installing %s .NET %d SDK (%s) in %s...\n", quality, major, archive.Version, dir)
 			if err := downloadAndInstall(ctx, client, archive, dir); err != nil {
 				return fmt.Errorf("install .NET SDK %s: %w", archive.Version, err)
 			}

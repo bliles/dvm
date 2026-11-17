@@ -65,6 +65,9 @@ func TestPruneMajorKeepsLatestAndOtherMajors(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(stateDir, version+".sha512"), []byte("hash"), 0o600); err != nil {
 			t.Fatal(err)
 		}
+		if err := markSDKInstallPending(root, version); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	removed, err := pruneMajor(root, 10)
@@ -101,6 +104,12 @@ func TestPruneMajorKeepsLatestAndOtherMajors(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(stateDir, "10.0.200.sha512")); err != nil {
 		t.Errorf("expected current install marker to remain: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "10.0.100.pending")); !os.IsNotExist(err) {
+		t.Errorf("expected stale pending marker to be removed, stat error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "10.0.200.pending")); err != nil {
+		t.Errorf("expected current pending marker to remain: %v", err)
 	}
 }
 

@@ -38,7 +38,16 @@ for that major version.
 `update` updates every major version with an installed SDK to its latest
 release and prunes superseded versions within those majors. Other major
 versions remain installed. Preview releases are excluded unless `--preview`
-is specified.
+is specified. An SDK already installed for the current platform is skipped.
+For installations not recorded by dvm, it recognizes the SDK using its
+`dotnet.dll` and `.version` files; this does not verify every installed file.
+An interrupted dvm installation is retried on the next update.
+
+On Linux and macOS, dvm replaces files rather than overwriting them in place,
+so a running `dotnet` executable does not block its replacement. On Windows,
+files in use may still be locked; close VS Code and other processes using the
+installation and retry if an update reports a locked file. Running processes
+may also prevent removal of superseded versions.
 
 `uninstall 10` removes all .NET 10 SDKs, runtimes, host components, manifests,
 and packs under the selected directory, including versions installed by other
